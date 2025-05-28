@@ -1,0 +1,341 @@
+openapi: 3.0.4
+info:
+  title: Extraction API
+  description: |-
+    _This is hypothetical. It is not implemented_
+    
+    Pure Farming provides the Data Extraction API to extract data from PDFs, images and other files. This is for Project Catalyst.
+  termsOfService: https://mapof.ag/wp-content/uploads/2024/07/Pure-Farming-Subscriber-Master-Agreement-Version-20-05-2022-2.pdf
+  contact:
+    email: support@purefarming.com
+  version: 1.0.12
+externalDocs:
+  description: Pure Farming Developer Documentation
+  url: https://developer.purefarming.com
+servers:
+  - url: https://api.purefarming.com/extraction/v1
+  - url: https://api.purefarming.com/extraction/v2-beta/
+tags:
+  - name: Data Extraction
+    description: Extract data from files into standardised format
+    externalDocs:
+      description: Find out more
+      url: https://developer.purefarming.com/
+paths:
+  /jobs:
+    get:
+      tags:
+        - Data Extraction
+      summary: Get a list of data extraction jobs
+      description: A list of all data extraction jobs without the raw data
+      operationId: listJobs
+      parameters:
+        - name: jobIds
+          in: query
+          description: Filter out all jobs except with these IDs
+          required: false
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+              example: a410c521-1cb4-4d10-876e-e8e0bae9bd2d
+        - name: status
+          in: query
+          description: Filter by job status
+          required: false
+          explode: true
+          schema:
+            $ref: "#/components/schemas/jobStatus"
+        - name: reference
+          in: query
+          description: Filter by your custom reference
+          required: false
+          explode: true
+          schema:
+            type: string
+            example: MyCustomReference1234
+        - name: resourceType
+          in: query
+          description: Filter by the type of data you are extracting
+          required: false
+          explode: true
+          schema:
+            $ref: "#/components/schemas/resourceType"
+        - name: startTimeUtc
+          in: query
+          description: Exclude jobs before this time (UTC)
+          required: false
+          explode: true
+          schema:
+            type: string
+            example: 2025-01-01T12:00:00.000Z
+            format: date-time
+        - name: endTimeUtc
+          in: query
+          description: Exclude jobs before after time (UTC)
+          required: false
+          explode: true
+          schema:
+            type: string
+            example: 2025-01-02T12:00:00.000Z
+            format: date-time
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/extractionJobLite'
+        '401':
+          description: Unauthorized
+      security:
+        - auth: []
+    post:
+      tags:
+        - Data Extraction
+      summary: Create a new data extraction job
+      description: Upload your files to create a new job
+      operationId: addJob
+      parameters:
+        - name: resourceType
+          in: query
+          description: The type of data you want to extract from the files
+          required: true
+          explode: true
+          schema:
+            $ref: "#/components/schemas/resourceType"
+        - name: reference
+          in: query
+          description: A free-text identifier you can use to identify the job
+          required: false
+          explode: true
+          schema:
+            type: string
+            example: MyCustomReference1234
+        - name: holdingId
+          in: query
+          description: |
+            The ID of the holding in Pure Farming to store the data against
+            
+            Optional. If you want to store data against a holding in Pure Farming you need WRITE permission to the holding
+          required: false
+          explode: true
+          schema:
+            type: string
+            example: 74249a30-fb77-40a9-a357-d7885902037d
+      requestBody:
+        description: |
+          Files to extract data from. These could be receipts, invoices, or other export  
+          We currently support PDF, JPG, PNG, DOC and HEIC formats
+          
+          Max file size: 50MB  
+          Max # number files: 10
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  uniqueItems: true
+                  items:
+                    type: string
+                    format: binary
+        required: true
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/extractionJob'
+        '400':
+          description: No files were attached
+        '403':
+          description: When holdingId is provided, you do not have access to write data to that holding
+      security:
+        - auth: []
+  /jobs/{jobId}:
+    get:
+      tags:
+        - Data Extraction
+      summary: Job status and data extracted
+      description: |
+        If a job has completed then it will also include the data extracted from the file.  
+        
+        If you want to find a job by your custom reference then use the the `GET /jobs?reference=MyCustomReference1234` endpoint  
+        
+        We recommend polling for a job status on the `GET /jobs?jobIds=a410c521-1cb4-4d10-876e-e8e0bae9bd2d` endpoint and only using this to get the data once a job has completed
+      operationId: findJobById
+      parameters:
+        - name: jobId
+          in: path
+          description: The ID of the job
+          required: true
+          explode: true
+          schema:
+            type: string
+            example: a410c521-1cb4-4d10-876e-e8e0bae9bd2d
+            format: uuid
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/extractionJob'
+        '404':
+          description: Job not found
+      security:
+        - auth: []
+    delete:
+      tags:
+        - Data Extraction
+      summary: Delete a data extraction job
+      description: This will not delete the data against the holding if you opted to store the data against a holding by providing the holdingId
+      operationId: deleteJobById
+      parameters:
+        - name: jobId
+          in: path
+          description: The ID of the data extraction job
+          required: true
+          explode: true
+          schema:
+            type: string
+            example: a410c521-1cb4-4d10-876e-e8e0bae9bd2d
+            format: uuid
+      responses:
+        '204':
+          description: success
+        '404':
+          description: not found
+components:
+  schemas:
+    jobStatus:
+      type: string
+      nullable: false
+      example: PROCESSING
+      description: |
+        The status of the job  
+        * UPLOADED - File has been uploaded but has not started processing yet
+        * PROCESSING - File / Job is processing, the data is being extracted
+        * COMPLETED - File / Job has finished processing, the data will be populated for the file
+        * FAILED - File could not be processed, see message field on file
+      enum:
+        - UPLOADED
+        - PROCESSING
+        - PARTIAL
+        - COMPLETED
+        - FAILED
+    resourceType:
+      type: string
+      nullable: false
+      example: pfFertiliserTransaction
+      description: The type of data to extract from the files
+      enum:
+        - pfFertiliserTransaction
+        - pfFeedTransaction
+    extractionJob:
+      required:
+        - id
+        - status
+        - startTimeUtc
+        - files
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/extractionJobLite"
+      properties:
+        files:
+          items:
+            properties:
+              data:
+                type: array
+                nullable: true
+                description: Standardised data extracted from the file. For example pfFertiliserTransaction
+                items:
+                  $ref: https://raw.githubusercontent.com/Pure-Farming/Schema/refs/heads/main/inventory/fertiliser-transaction.json
+    extractionJobLite:
+      required:
+        - id
+        - status
+        - startTimeUtc
+      type: object
+      properties:
+        id: 
+          type: string
+          format: uuid
+          nullable: false
+          description: The ID of the extraction job
+          example: a410c521-1cb4-4d10-876e-e8e0bae9bd2d
+        reference:
+          type: string
+          nullable: true
+          description: A custom identifier for this job (if set)
+          example: MyCustomReference1234
+        resourceType:
+          $ref: "#/components/schemas/resourceType"
+        status: 
+          $ref: "#/components/schemas/jobStatus"
+        startTimeUtc:
+          type: string
+          format: date-time
+          nullable: false
+          description: The time the job was created (files uploaded)
+          example: 2025-01-01T12:45:00.000Z
+        endTimeUtc:
+          type: string
+          format: date-time
+          nullable: true
+          description: The time the job finished (all files finished processing). `null` if job is still running
+          example: null
+        files:
+          type: array
+          nullable: false
+          description: List of files being processed in this job
+          example:
+            - fileName: file1.jpg
+              status: COMPLETED
+              startTimeUtc: 2025-01-01T12:45:01.022Z
+              endTimeUtc: 2025-01-01T12:46:52.988Z
+            - fileName: file2.pdf
+              status: PROCESSING
+              startTimeUtc: 2025-01-01T12:45:12.900Z
+              endTimeUtc: null
+          items:
+            type: object
+            properties:
+              fileName: 
+                type: string
+                nullable: false
+                example: file1.jpg
+              status:
+                $ref: "#/components/schemas/jobStatus"
+              startTimeUtc:
+                type: string
+                format: date-time
+                nullable: false
+                description: The time the file started processing
+                example: 2025-01-01T12:45:00.000Z
+              endTimeUtc:
+                type: string
+                format: date-time
+                nullable: true
+                description: The time the file finished processing. `null` if job is still running
+                example: 2025-01-01T12:46:50.000Z
+  securitySchemes:
+    auth:
+      type: oauth2
+      flows:
+        implicit:
+          authorizationUrl: https://signin.purefarming.com/auth/realms/moa/oauth/authorize
+          scopes: {}
+    api_key:
+      type: apiKey
+      name: api_key
+      in: header
